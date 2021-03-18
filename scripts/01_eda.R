@@ -79,73 +79,29 @@ data_tb %>%
     ggplot2::geom_histogram(aes(y = ..density..)) +
     ggplot2::geom_density(alpha=.2, fill="#FF6666") +
     ggplot2::facet_wrap(~name, scales = "free_x")
-ggplot2::ggsave(filename = "./data/samples/histogram_log10.png",
+# ggplot2::ggsave(filename = "./data/samples/histogram_log10.png",
+#        width = 297,
+#        height = 210,
+#        units = "mm")
+
+data_tb %>%
+    ggplot2::ggplot(ggplot2::aes(x = log(def_2019))) + 
+    ggplot2::geom_histogram(aes(y = ..density..))+
+    ggplot2::geom_density(alpha=.2, fill="#FF6666")  
+ggplot2::ggsave(filename = "./data/samples/histogram_ln_def2019.png",
        width = 297,
        height = 210,
        units = "mm")
 
-data_tb %>%
-    ggplot2::ggplot(ggplot2::aes(x = log10(def_2019))) + 
-    ggplot2::geom_histogram(aes(y = ..density..))+
-    ggplot2::geom_density(alpha=.2, fill="#FF6666")  
-
 # This correlogram shows correlation coefficients for all pairs of variables 
 # (with more intense colors for more extreme correlations), and correlations 
 # not significantly different from 0 are represented by a white box
-corr_plot <- corrplot2(
-    data = data_tb %>%
-        dplyr::select(-id, -longitude, -latitude) %>%
-        dplyr::select(where(is.numeric)),
-    method = "pearson",
-    sig.level = 0.05,
-    order = "original",
-    diag = FALSE,
-    type = "upper",
-    tl.srt = 75
-)
-
-# The same plot, taking the log10 of the outcome variable.
 corrplot2(
     data = data_tb %>%
         dplyr::select(-id, -longitude, -latitude) %>%
         dplyr::select(where(is.numeric)) %>%
         dplyr::filter(def_2019      > 0) %>%
-        dplyr::mutate(log_def_2019      = log10(def_2019)) %>%
-        dplyr::select(-def_2019),
-    method = "pearson",
-    sig.level = 0.05,
-    order = "original",
-    diag = FALSE,
-    type = "upper",
-    tl.srt = 75
-)
-
-# The same plot, taking the log10 of the variables.
-corrplot2(
-    data = data_tb %>%
-        dplyr::select(-id, -longitude, -latitude) %>%
-        dplyr::select(where(is.numeric)) %>%
-        dplyr::filter(
-           def_lastyear  > 0,
-           def_cum_2year > 0,
-           def_cum_4year > 0,
-           dist_road     > 0,
-           dist_hydr     > 0,
-           dist_rodhyd   > 0,
-           dist_1per     > 0,
-           dist_2per     > 0,
-           heat_lastyear > 0,
-           def_2019      > 0) %>%
-        dplyr::mutate(def_lastyear  = log10(def_lastyear), 
-               def_cum_2year = log10(def_cum_2year),
-               def_cum_4year = log10(def_cum_4year),
-               dist_road     = log10(dist_road),
-               dist_hydr     = log10(dist_hydr),
-               dist_rodhyd   = log10(dist_rodhyd),
-               dist_1per     = log10(dist_1per),
-               dist_2per     = log10(dist_2per),
-               heat_lastyear = log10(heat_lastyear),
-               def_2019      = log10(def_2019)),
+        dplyr::mutate(log_def_2019      = log(def_2019)),
     method = "pearson",
     sig.level = 0.05,
     order = "original",
