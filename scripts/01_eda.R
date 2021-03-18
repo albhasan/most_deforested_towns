@@ -37,9 +37,9 @@ point_tb <- point_shp %>%
 data_tb <- xlx_file %>%
     readxl::read_excel(.name_repair = janitor::make_clean_names) %>% 
     dplyr::rename(
-        "id" = "id",
+        "id"            = "id",
         "def_lastyear"  = "desmatamento_ano_anterior_km2",
-        "def_cum_2year" = "desmatamento_acumulado_2_anos_anteriores_km2",                            
+        "def_cum_2year" = "desmatamento_acumulado_2_anos_anteriores_km2",
         "def_cum_4year" = "desmatamento_acumulado_4_anos_anteriores_km2",
         "dist_road"     = "distancia_rodovia_km",
         "dist_hydr"     = "distancia_hidrovia_km",
@@ -47,6 +47,8 @@ data_tb <- xlx_file %>%
         "dist_1per"     = "distancia_a_ponto_de_grade_1_percent_desmatamentono_ano_anterior_km",
         "dist_2per"     = "distancia_a_ponto_de_grade_2_percent_desmatamento_acumulado_em_2_anos_km",
         "heat_lastyear" = "focos_de_calor_ano_anterior",
+        "slope"         = "declividade",
+        "prot_area"     = "area_pa",
         "x"             = "x",
         "def_2019"      = "desmatamento_2019_km2"
     ) %>%
@@ -56,24 +58,60 @@ data_tb <- xlx_file %>%
     dplyr::left_join(point_tb, 
                      by = "id")
 
-skimr::skim(data_tb)
-
 # Plot the predicted variable with and wihout a lograithic transformation.
 data_tb %>%
-    ggplot(aes(x = def_2019)) + 
-    geom_histogram()
+    dplyr::select(-id, -longitude, -latitude, -NM_MUNICIP, -CD_GEOCMU, -UF) %>%
+    tidyr::pivot_longer(cols = everything()) %>%
+    ggplot2::ggplot(ggplot2::aes(x = value)) + 
+    ggplot2::facet_wrap(~name, scales = "free_x") + 
+    ggplot2::geom_histogram()
+ggsave(filename = "./data/samples/histogram.png",
+       width = 297,
+       height = 210,
+       units = "mm")
+
 data_tb %>%
-    ggplot(aes(x = log10(def_2019))) + 
-    geom_histogram(aes(y=..density..))+
-    geom_density(alpha=.2, fill="#FF6666")  
+    dplyr::select(-id, -longitude, -latitude, -NM_MUNICIP, -CD_GEOCMU, -UF) %>%
+    tidyr::pivot_longer(cols = everything()) %>%
+    dplyr::mutate(name = stringr::str_c("log10_", name),
+           log_value = log10(value)) %>%
+    ggplot2::ggplot(ggplot2::aes(x = log_value)) + 
+    ggplot2::geom_histogram(aes(y = ..density..)) +
+    ggplot2::geom_density(alpha=.2, fill="#FF6666") +
+    ggplot2::facet_wrap(~name, scales = "free_x")
+ggplot2::ggsave(filename = "./data/samples/histogram_log10.png",
+       width = 297,
+       height = 210,
+       units = "mm")
+
+data_tb %>%
+    ggplot2::ggplot(ggplot2::aes(x = log10(def_2019))) + 
+    ggplot2::geom_histogram(aes(y = ..density..))+
+    ggplot2::geom_density(alpha=.2, fill="#FF6666")  
 
 # This correlogram shows correlation coefficients for all pairs of variables 
 # (with more intense colors for more extreme correlations), and correlations 
 # not significantly different from 0 are represented by a white box
+corr_plot <- corrplot2(
+    data = data_tb %>%
+        dplyr::select(-id, -longitude, -latitude) %>%
+        dplyr::select(where(is.numeric)),
+    method = "pearson",
+    sig.level = 0.05,
+    order = "original",
+    diag = FALSE,
+    type = "upper",
+    tl.srt = 75
+)
+
+# The same plot, taking the log10 of the outcome variable.
 corrplot2(
     data = data_tb %>%
-        select(-id, -longitude, -latitude) %>%
-        select(where(is.numeric)),
+        dplyr::select(-id, -longitude, -latitude) %>%
+        dplyr::select(where(is.numeric)) %>%
+        dplyr::filter(def_2019      > 0) %>%
+        dplyr::mutate(log_def_2019      = log10(def_2019)) %>%
+        dplyr::select(-def_2019),
     method = "pearson",
     sig.level = 0.05,
     order = "original",
@@ -85,9 +123,9 @@ corrplot2(
 # The same plot, taking the log10 of the variables.
 corrplot2(
     data = data_tb %>%
-        select(-id, -longitude, -latitude) %>%
-        select(where(is.numeric)) %>%
-        filter(
+        dplyr::select(-id, -longitude, -latitude) %>%
+        dplyr::select(where(is.numeric)) %>%
+        dplyr::filter(
            def_lastyear  > 0,
            def_cum_2year > 0,
            def_cum_4year > 0,
@@ -98,7 +136,7 @@ corrplot2(
            dist_2per     > 0,
            heat_lastyear > 0,
            def_2019      > 0) %>%
-        mutate(def_lastyear  = log10(def_lastyear), 
+        dplyr::mutate(def_lastyear  = log10(def_lastyear), 
                def_cum_2year = log10(def_cum_2year),
                def_cum_4year = log10(def_cum_4year),
                dist_road     = log10(dist_road),
