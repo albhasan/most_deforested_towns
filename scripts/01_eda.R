@@ -34,34 +34,38 @@ point_tb <- point_shp %>%
     tibble::as_tibble() %>%
     dplyr::rename(id = ID)
 
-data_tb <- xlx_file %>%
-    readxl::read_excel(.name_repair = janitor::make_clean_names) %>% 
-    dplyr::rename(
-        "id"            = "id",
-        "def_lastyear"  = "desmatamento_ano_anterior_km2",
-        "def_cum_2year" = "desmatamento_acumulado_2_anos_anteriores_km2",
-        "def_cum_4year" = "desmatamento_acumulado_4_anos_anteriores_km2",
-        "dist_road"     = "distancia_rodovia_km",
-        "dist_hydr"     = "distancia_hidrovia_km",
-        "dist_rodhyd"   = "distancia_rodovia_hidrovia_km",
-        "dist_1per"     = "distancia_a_ponto_de_grade_1_percent_desmatamentono_ano_anterior_km",
-        "dist_2per"     = "distancia_a_ponto_de_grade_2_percent_desmatamento_acumulado_em_2_anos_km",
-        "heat_lastyear" = "focos_de_calor_ano_anterior",
-        "slope"         = "declividade",
-        "prot_area"     = "area_pa",
-        "x"             = "x",
-        "def_2019"      = "desmatamento_2019_km2"
-    ) %>%
-    dplyr::select_if(all_na) %>%
-    ensurer::ensure_that(length(unique(.$id)) == nrow(.),
-                         err_desc = "Duplicated ids in data!") %>%
-    dplyr::left_join(point_tb, 
-                     by = "id")
+sheet_names <- readxl::excel_sheets(xlx_file)
+data_ls <- list()
+for (my_sheet in sheet_names) {
+    data_ls[[my_sheet]] <- xlx_file %>%
+        readxl::read_excel(sheet = my_sheet, 
+                           .name_repair = janitor::make_clean_names) %>%
+        tibble::as_tibble() %>%
+        magrittr::set_colnames(value = c("id", "def_lastyear", "def_cum_2year", 
+                                         "def_cum_4year", "dist_road", 
+                                         "dist_hydr", "dist_rodhyd", 
+                                         "dist_1per", "dist_2per", 
+                                         "heat_lastyear", "slope", "prot_area", 
+                                         "x",  "def")) %>%
+        dplyr::select_if(all_na) %>%
+        dplyr::mutate(year = as.integer(my_sheet)) %>%
+        ensurer::ensure_that(length(unique(.$id)) == nrow(.),
+                             err_desc = sprintf("Duplicated ids in data %s!", 
+                                                my_sheet))
+}
 
-# Plot the predicted variable with and wihout a lograithic transformation.
-data_tb %>%
+data_tb <- data_ls %>%
+    dplyr::bind_rows() %>%   
+    dplyr::left_join(point_tb, by = "id")
+
+# Plot the variables
+plot_tb <- data_tb %>%
     dplyr::select(-id, -longitude, -latitude, -NM_MUNICIP, -CD_GEOCMU, -UF) %>%
-    tidyr::pivot_longer(cols = everything()) %>%
+    tidyr::pivot_longer(cols = !tidyselect::matches("^year$"))
+
+plot_tb %>%
+    dplyr::mutate(name = stringr::str_c(name, "_", year)) %>%
+    dplyr::select(-year) %>%
     ggplot2::ggplot(ggplot2::aes(x = value)) + 
     ggplot2::facet_wrap(~name, scales = "free_x") + 
     ggplot2::geom_histogram()
@@ -70,25 +74,16 @@ ggsave(filename = "./data/samples/histogram.png",
        height = 210,
        units = "mm")
 
-data_tb %>%
-    dplyr::select(-id, -longitude, -latitude, -NM_MUNICIP, -CD_GEOCMU, -UF) %>%
-    tidyr::pivot_longer(cols = everything()) %>%
-    dplyr::mutate(name = stringr::str_c("log10_", name),
-           log_value = log10(value)) %>%
+plot_tb %>%
+    dplyr::filter(name == "def") %>%
+    dplyr::mutate(name = stringr::str_c("ln_", name, "_", year),
+                  log_value = log(value)) %>%
+    dplyr::select(-year) %>%
     ggplot2::ggplot(ggplot2::aes(x = log_value)) + 
     ggplot2::geom_histogram(aes(y = ..density..)) +
     ggplot2::geom_density(alpha=.2, fill="#FF6666") +
     ggplot2::facet_wrap(~name, scales = "free_x")
-# ggplot2::ggsave(filename = "./data/samples/histogram_log10.png",
-#        width = 297,
-#        height = 210,
-#        units = "mm")
-
-data_tb %>%
-    ggplot2::ggplot(ggplot2::aes(x = log(def_2019))) + 
-    ggplot2::geom_histogram(aes(y = ..density..))+
-    ggplot2::geom_density(alpha=.2, fill="#FF6666")  
-ggplot2::ggsave(filename = "./data/samples/histogram_ln_def2019.png",
+ggplot2::ggsave(filename = "./data/samples/histogram_ln10.png",
        width = 297,
        height = 210,
        units = "mm")
@@ -100,8 +95,25 @@ corrplot2(
     data = data_tb %>%
         dplyr::select(-id, -longitude, -latitude) %>%
         dplyr::select(where(is.numeric)) %>%
-        dplyr::filter(def_2019      > 0) %>%
-        dplyr::mutate(log_def_2019      = log(def_2019)),
+        dplyr::filter(def > 0,
+                      year == 2019) %>%
+        dplyr::select(-year) %>%
+        dplyr::mutate(log_def = log(def)),
+    method = "pearson",
+    sig.level = 0.05,
+    order = "original",
+    diag = FALSE,
+    type = "upper",
+    tl.srt = 75
+)
+corrplot2(
+    data = data_tb %>%
+        dplyr::select(-id, -longitude, -latitude) %>%
+        dplyr::select(where(is.numeric)) %>%
+        dplyr::filter(def > 0,
+                      year == 2020) %>%
+        dplyr::select(-year) %>%
+        dplyr::mutate(log_def = log(def)),
     method = "pearson",
     sig.level = 0.05,
     order = "original",

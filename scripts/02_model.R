@@ -4,12 +4,31 @@ library(ensurer)
 library(readr)
 library(vip)
 
-data_tb <- "./data/samples/data_tb.rds" %>%
+
+
+raw_tb <- "./data/samples/data_tb.rds" %>%
     readRDS()  %>%
-    #sample_n(1000) %>%
-    filter(def_2019 > 0)  %>% 
-    dplyr::mutate(log_def_2019 = log(def_2019)) %>%
-    ensure_that(nrow(.) > 0,
+    dplyr::mutate(log_def = log(def)) %>%
+    (function(x) {
+        x %>%
+            dplyr::group_by(year) %>%
+            dplyr::summarize(total = dplyr::n(),
+                             def_mean = mean(def),
+                             def_sd   = sd(def)) %>%
+            print(n = Inf)
+        return(x) 
+    })
+
+data_tb <- raw_tb %>%
+    dplyr::filter(year %in% c(2019, 2020),
+                  def > 0) %>%
+    #------------------------
+    # # NOTE: Only for testing code!
+    # dplyr::group_by(year) %>%
+    # dplyr::sample_n(1000) %>%
+    # dplyr::ungroup() %>%
+    #------------------------
+    ensurer::ensure_that(nrow(.) > 0,
                 err_desc = "No data found!")
 
 
@@ -21,20 +40,22 @@ data_split <- rsample::initial_split(data_tb)
 data_train <- rsample::training(data_split)
 data_test  <- rsample::testing(data_split)
 
-set.seed(234)
+set.seed(456)
 data_folds <- rsample::bootstraps(data_train)
 
 
 
 #---- Recipe ----
 
-ranger_recipe <- recipes::recipe(formula = log_def_2019 ~ .,
+ranger_recipe <- recipes::recipe(formula = log_def ~ .,
                                  data = data_tb) %>%
-    recipes::update_role(longitude, latitude, 
-                         new_role = "position") %>%
     recipes::update_role(id, UF, CD_GEOCMU, NM_MUNICIP, 
-                         longitude, latitude, def_2019,
+                         longitude, latitude, 
+                         def, slope, year,
                          new_role = "other")
+ranger_recipe %>%
+    summary() %>%
+    dplyr::arrange(dplyr::desc(role), variable)
 
 
 
@@ -43,7 +64,6 @@ ranger_recipe <- recipes::recipe(formula = log_def_2019 ~ .,
 ranger_spec <- parsnip::rand_forest(mtry = tune::tune(),
                                     min_n = tune::tune(),
                                     trees = 2000) %>%
-                                    #trees = 200) %>%
     parsnip::set_mode(mode = "regression") %>%
     parsnip::set_engine("ranger")
 
@@ -87,15 +107,15 @@ data_fit <- ranger_workflow %>%
 test_performance <- data_fit %>%
     tune::collect_metrics()
 saveRDS(test_performance, 
-        file = "test_performance.rds") 
+        file = "./results/test_performance.rds") 
 
 test_predictions <- data_fit %>%
     tune::collect_predictions()
 saveRDS(test_predictions,
-        file = "test_predictions.rds")
+        file = "./results/test_predictions.rds")
 
 test_predictions %>%
-    ggplot2::ggplot(ggplot2::aes(log_def_2019, 
+    ggplot2::ggplot(ggplot2::aes(log_def, 
                                  .pred)) +
     ggplot2::geom_abline(lty = 2,
                 color = "gray50") +
@@ -104,9 +124,9 @@ test_predictions %>%
     ggplot2::coord_fixed() +
     ggplot2::labs(title = sprintf("Test data (n = %s)", 
                                   nrow(test_predictions))) +
-    ggplot2::xlab("ln(Deforestation 2019)") +
+    ggplot2::xlab("ln(Deforestation)") +
     ggplot2::ylab("Prediction")
-ggplot2::ggsave("log_def2019_vs_prediction.png")
+ggplot2::ggsave("./results/log_def_vs_prediction.png")
     
 
 #---- Importance of variables ----
@@ -124,7 +144,7 @@ workflow() %>%
     pull_workflow_fit() %>%
     vip(aesthetics = list(alpha = 0.8,
                           fill = "midnightblue"))
-ggsave("feature_importance.png")
+ggsave("./results/feature_importance.png")
 
 
 
@@ -133,18 +153,18 @@ ggsave("feature_importance.png")
 final_model <- parsnip::fit(ranger_workflow,
                             data_tb)
 saveRDS(final_model,
-        file = "final_model.rds")
+        file = "./results/final_model.rds")
 
 # Save the prediction on the original data.
 fake_new_data <- ranger_recipe %>%
-    recipes::prep(data_tb) %>%
+    recipes::prep(raw_tb) %>%
     recipes::juice()
 fake_pred <- predict(final_model, fake_new_data)
-new_data_tb <- data_tb %>%
+new_data_tb <- raw_tb %>%
     dplyr::bind_cols(fake_pred) %>%
-    dplyr::mutate(pred_def_2019 = exp(.pred)) %>%
+    dplyr::mutate(pred_def = exp(.pred)) %>%
     (function(x) {
-        saveRDS(x, file = "new_data_tb.rds")
-        readr::write_csv(x, file = "new_data_tb.csv")
+        saveRDS(x, file = "./results/new_data_tb.rds")
+        readr::write_csv(x, file = "./results/new_data_tb.csv")
         return(x)
     })
