@@ -10,11 +10,14 @@ raw_tb <- "./data/samples/data_tb.rds" %>%
     readRDS()  %>%
     dplyr::mutate(log_def = log(def)) %>%
     (function(x) {
+        print("Raw data deforestation statistics...")
         x %>%
             dplyr::group_by(year) %>%
             dplyr::summarize(total = dplyr::n(),
                              def_mean = mean(def),
-                             def_sd   = sd(def)) %>%
+                             def_sd   = sd(def),
+                             def_min  = min(def, na.rm = TRUE),
+                             def_max  = max(def, na.rm = TRUE)) %>%
             print(n = Inf)
         return(x) 
     })
@@ -53,9 +56,11 @@ ranger_recipe <- recipes::recipe(formula = log_def ~ .,
                          longitude, latitude, 
                          def, slope, year,
                          new_role = "other")
+print("Variables...")
 ranger_recipe %>%
     summary() %>%
-    dplyr::arrange(dplyr::desc(role), variable)
+    dplyr::arrange(dplyr::desc(role), variable) %>%
+    print(n = Inf)
 
 
 
@@ -83,8 +88,8 @@ doParallel::registerDoParallel()
 ranger_tune <- tune::tune_grid(ranger_workflow,
                                resamples = data_folds,
                                grid = 11)
-tune::show_best(ranger_tune, metric = "rmse")
-tune::show_best(ranger_tune, metric = "rsq")
+#tune::show_best(ranger_tune, metric = "rmse")
+#tune::show_best(ranger_tune, metric = "rsq")
 #autoplot(ranger_tune)
 
 
@@ -93,10 +98,13 @@ tune::show_best(ranger_tune, metric = "rsq")
 
 param_final <- ranger_tune %>%
     select_best(metric = "rmse")
+print("Final hyper-parameters...")
+print(param_final, n = Inf)
 
 ranger_workflow <- ranger_workflow %>%
     finalize_workflow(param_final)
-
+print("Final model's hyper-parameters...")
+print(ranger_workflow)
 
 
 #---- Evaluate ----
@@ -106,6 +114,8 @@ data_fit <- ranger_workflow %>%
 
 test_performance <- data_fit %>%
     tune::collect_metrics()
+print("Performance...")
+print(test_performance, n = Inf)
 saveRDS(test_performance, 
         file = "./results/test_performance.rds") 
 
