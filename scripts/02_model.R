@@ -3,6 +3,7 @@ library(doParallel)
 library(ensurer)
 library(readr)
 library(vip)
+library(magrittr)
 
 
 
@@ -98,8 +99,6 @@ ranger_tune <- tune::tune_grid(ranger_workflow,
 
 param_final <- ranger_tune %>%
     select_best(metric = "rmse")
-print("Final hyper-parameters...")
-print(param_final, n = Inf)
 
 ranger_workflow <- ranger_workflow %>%
     finalize_workflow(param_final)
@@ -123,6 +122,8 @@ test_predictions <- data_fit %>%
     tune::collect_predictions()
 saveRDS(test_predictions,
         file = "./results/test_predictions.rds")
+write_csv(test_predictions,
+          file = "./results/test_predictions.csv")
 
 test_predictions %>%
     ggplot2::ggplot(ggplot2::aes(log_def, 
@@ -147,11 +148,19 @@ imp_spec <- ranger_spec %>%
     set_engine("ranger",
                importance = "permutation")
 
-workflow() %>%
+workflow_fit <-  workflow() %>%
     add_recipe(ranger_recipe) %>%
     add_model(imp_spec) %>%
     fit(data_train) %>%
-    pull_workflow_fit() %>%
+    pull_workflow_fit()
+workflow_fit %>%
+    magrittr::extract2("fit") %>%
+    magrittr::extract2("variable.importance") %>%
+    as.list() %>%
+    as_tibble() %>%
+    write_csv(file = "./results/variable_importance.csv")
+
+workflow_fit %>%
     vip(aesthetics = list(alpha = 0.8,
                           fill = "midnightblue"))
 ggsave("./results/feature_importance.png")
