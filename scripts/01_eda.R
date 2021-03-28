@@ -106,21 +106,6 @@ corrplot2(
     type = "upper",
     tl.srt = 75
 )
-corrplot2(
-    data = data_tb %>%
-        dplyr::select(-id, -longitude, -latitude) %>%
-        dplyr::select(where(is.numeric)) %>%
-        dplyr::filter(def > 0,
-                      year == 2020) %>%
-        dplyr::select(-year) %>%
-        dplyr::mutate(log_def = log(def)),
-    method = "pearson",
-    sig.level = 0.05,
-    order = "original",
-    diag = FALSE,
-    type = "upper",
-    tl.srt = 75
-)
 
 # Save data
 saveRDS(data_tb, 
