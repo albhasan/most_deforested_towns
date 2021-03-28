@@ -26,12 +26,6 @@ raw_tb <- "./data/samples/data_tb.rds" %>%
 data_tb <- raw_tb %>%
     dplyr::filter(year %in% c(2019, 2020),
                   def > 0) %>%
-    #------------------------
-    # # NOTE: Only for testing code!
-    # dplyr::group_by(year) %>%
-    # dplyr::sample_n(1000) %>%
-    # dplyr::ungroup() %>%
-    #------------------------
     ensurer::ensure_that(nrow(.) > 0,
                 err_desc = "No data found!")
 
@@ -138,7 +132,9 @@ test_predictions %>%
     ggplot2::xlab("ln(Deforestation)") +
     ggplot2::ylab("Prediction")
 ggplot2::ggsave("./results/log_def_vs_prediction.png")
-    
+
+
+
 
 #---- Importance of variables ----
 
@@ -187,3 +183,38 @@ new_data_tb <- raw_tb %>%
         readr::write_csv(x, file = "./results/new_data_tb.csv")
         return(x)
     })
+
+#---- Evaluate using cross-validation ----
+
+my_fit <- function(split, id, recipe, model) {
+    analysis_set   <- rsample::analysis(split)  
+    analysis_prep <- recipes::prep(recipe, 
+                                   training = analysis_set)
+    analysis_processed <- recipes::bake(analysis_prep, 
+                                        new_data = analysis_set) 
+    assessment_set <- rsample::assessment(split)
+    assessment_prep <- recipes::prep(recipe, 
+                                     testing = assessment_set)
+    assessment_processed <- recipes::bake(assessment_prep, 
+                                          new_data = assessment_set) 
+    tibble::tibble("id" = id,
+                   "truth" = assessment_processed$log_def,
+                   "prediction" = unlist(predict(model, 
+                                                 new_data = assessment_processed)))
+}
+
+data_cv <- data_train %>%
+    vfold_cv(repeats = 100)
+
+cv_evaluation <- map2_df(.x = data_cv$splits,
+                         .y = data_cv$id,
+                         ~my_fit(split = .x, id = .y,
+                                 recipe = ranger_recipe,
+                                 model = final_model))
+
+cv_eval_results <- cv_evaluation %>%
+    group_by(id) %>%
+    rmse(truth, prediction) %>%
+    summarise(mean_rmse = mean(.estimate))
+cv_eval_results
+
