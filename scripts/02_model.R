@@ -203,18 +203,26 @@ my_fit <- function(split, id, recipe, model) {
                                                  new_data = assessment_processed)))
 }
 
+# data_cv <- data_train %>%
+#     vfold_cv(repeats = 100)
 data_cv <- data_train %>%
-    vfold_cv(repeats = 100)
+    rsample::mc_cv(times = 100)
 
 cv_evaluation <- map2_df(.x = data_cv$splits,
                          .y = data_cv$id,
                          ~my_fit(split = .x, id = .y,
                                  recipe = ranger_recipe,
                                  model = final_model))
+saveRDS(cv_evaluation, 
+        "./results/cv_evaluation.rds")
 
 cv_eval_results <- cv_evaluation %>%
     group_by(id) %>%
-    rmse(truth, prediction) %>%
-    summarise(mean_rmse = mean(.estimate))
+    rmse(truth, prediction)
 cv_eval_results
+readr::write_csv(cv_eval_results, 
+        "./results/cv_eval_results.csv")
+
+cv_eval_results %>%
+    summarise(mean_rmse = mean(.estimate))
 
